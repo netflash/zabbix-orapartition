@@ -11,16 +11,16 @@ It doesn't translated to English and checked for missprints and errors.
 --
 -- First, gather statistics from source table
 -- Собираем статистику с исходной таблицы
-
+--
 EXEC dbms_stats.gather_table_stats('&&SCHEMA', 'TRENDS', cascade => true);
-
+--
 -- Next, check for existing of table TRENDS2
 -- Далее, проверим на наличие таблицы TRENDS2
-
+--
 SELECT  TABLE_NAME 
 FROM    ALL_TABLES
 WHERE   TABLE_NAME = 'TRENDS2';
-
+--
 -- Result must be NULL.
 -- В результате должен быть NULL.
 --
@@ -28,38 +28,59 @@ WHERE   TABLE_NAME = 'TRENDS2';
 -- Удаляем временную таблицу TRENDS2 вместе со всеми ограничениями
 -- Double dot (.) here - it is SQL syntax
 -- Две точки (.) тут  - такой синтаксис
-
+--
 --- drop table &&SCHEMA..TRENDS2 cascade CONSTRAINTS;
-
+--
+-- getting the minimum clock value
 -- получаем самое маленькое значение clock
 select min(clock) from &&SCHEMA..TRENDS;
-
+--
+-- for me that was 1361592000
 -- для меня это 1361592000
+--
+-- convert this unixtime using online converter http://www.onlineconversion.com/unix_time.htm
 -- используем http://www.onlineconversion.com/unix_time.htm конвертер и получаем
+--
 -- Sat, 23 Feb 2013 04:00:00 GMT
--- Соответственно начнем с 1 апреля 2013 
--- это в unixtime = 1364774400 и далее партиции по 1 неделе
+--
+-- So, let's begin from March, 1, 2013
+-- Соответственно начнем с 1 марта 2013 
+--
+-- in unixtime it's 1362110400 and next interval will be 1 week (in seconds 604800)
+-- это в unixtime = 1362110400 и далее партиции по 1 неделе
 -- это значение 604800
 --
+-- Let's create temporary table, based on the original one
 -- Cоздаем временную таблицу на основе оригинальной
+--
+-- Creating based on original data scheme of zabbix 2.0.6 database
 -- (взято из схемы от zabbix 2.0.6)
+--
+-- PRIMARY KEY we'll create later
 -- PRIMARY KEY будет позже
+--
 CREATE TABLE &&SCHEMA..TRENDS2 (
-itemid                   number(20)                                NOT NULL,
-        clock                    number(10)      DEFAULT '0'               NOT NULL,
-        num                      number(10)      DEFAULT '0'               NOT NULL,
-        value_min                number(20,4)    DEFAULT '0,0000'          NOT NULL,
-        value_avg                number(20,4)    DEFAULT '0,0000'          NOT NULL,
-        value_max                number(20,4)    DEFAULT '0,0000'          NOT NULL
-)
-COMPRESS PARTITION BY RANGE(clock)
-INTERVAL(604800)
-(PARTITION p0_trends VALUES LESS THAN(1364774400));
+  itemid     number(20)                      NOT NULL,
+  clock      number(10)    DEFAULT '0'       NOT NULL,
+  num        number(10)    DEFAULT '0'       NOT NULL,
+  value_min  number(20,4)  DEFAULT '0,0000'  NOT NULL,
+  value_avg  number(20,4)  DEFAULT '0,0000'  NOT NULL,
+  value_max  number(20,4)  DEFAULT '0,0000'  NOT NULL
+  )
+COMPRESS PARTITION BY RANGE(clock) INTERVAL(604800)
+(PARTITION P0_TRENDS VALUES LESS THAN(1362110400));
+--
+-- Here we begin to copy (redefine) data from one table to another
 -- Тут начинается процесс переноса данных из одной таблицы в другую.
+--
+-- First checking the possibility
 -- Сначала проверяем саму возможность 
+--
 EXEC Dbms_Redefinition.Can_Redef_Table('&&SCHEMA', 'TRENDS');
-
+--
+-- If we got no error, then let's begin redefenition. It'll take some time.
 -- Если ошибок не было, то начинаем процесс
+--
 BEGIN
   DBMS_REDEFINITION.start_redef_table(
     uname      => '&&SCHEMA',        
@@ -67,7 +88,9 @@ BEGIN
     int_table  => 'TRENDS2');
 END;
 /
-
+--
+-- stop-here --
+--
 -- Т.к. мы не сидели и не медитировали на процесс, то неизвестно, давно ли он закончился
 -- Поэтому синхронизируем таблицы
 
